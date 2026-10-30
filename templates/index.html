@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Water Intelligence</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div><span class="brand-icon">💧</span><div><h1>Water Intelligence</h1><p>AI-powered leak monitoring & wastage insights</p></div></div>
+  <span class="status"><i></i> Demo monitoring active</span>
+</header>
+
+<main class="container">
+  <section class="intro">
+    <div><p class="eyebrow">SMART WATER CONSERVATION</p><h2>Know your water. Detect waste earlier.</h2>
+    <p>Monitor flow, pipeline pressure and tank level. Review alerts that may indicate leakage or overflow.</p></div>
+    <div class="updated">Dashboard updated<br><strong>{{ last_updated }}</strong></div>
+  </section>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}{% endif %}
+  {% endwith %}
+
+  <section class="cards">
+    <article class="card"><span class="card-label">Readings analysed</span><strong>{{ total_readings }}</strong><small>Sensor records in dataset</small></article>
+    <article class="card"><span class="card-label">Suspected alerts</span><strong>{{ alert_count }}</strong><small>Medium + high risk readings</small></article>
+    <article class="card"><span class="card-label">High-risk alerts</span><strong class="red">{{ high_count }}</strong><small>Prioritise for inspection</small></article>
+    <article class="card"><span class="card-label">Possible excess water</span><strong>{{ total_loss }} L</strong><small>Rough estimate from flagged readings</small></article>
+  </section>
+
+  <section class="grid two">
+    <article class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">LATEST READING</p><h3>Pipeline status snapshot</h3></div>
+      <span class="badge {{ latest['risk']|lower }}">{{ latest['risk'] }} risk</span></div>
+      <div class="snapshot">
+        <div><span>Flow rate</span><strong>{{ latest['flow_rate_lpm'] }} <small>L/min</small></strong></div>
+        <div><span>Pressure</span><strong>{{ latest['pressure_bar'] }} <small>bar</small></strong></div>
+        <div><span>Tank level</span><strong>{{ latest['tank_level_percent'] }}<small>%</small></strong></div>
+      </div>
+      {% if latest['risk'] != 'Low' %}
+        <div class="notice warning"><strong>Possible issue:</strong> {{ latest['reason'] }}. Please verify the reading and inspect the pipeline/tank.</div>
+      {% else %}
+        <div class="notice good"><strong>No rule-based warning in the latest reading.</strong> Continue monitoring; this does not guarantee that the system is leak-free.</div>
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">ADD A TEST READING</p><h3>Simulate sensor input</h3></div></div>
+      <form action="{{ url_for('add_reading') }}" method="POST" class="reading-form">
+        <label>Flow rate (L/min)<input type="number" name="flow_rate_lpm" min="0" step="0.1" placeholder="e.g. 18" required></label>
+        <label>Pressure (bar)<input type="number" name="pressure_bar" min="0" step="0.01" placeholder="e.g. 1.8" required></label>
+        <label>Tank level (%)<input type="number" name="tank_level_percent" min="0" max="100" step="0.1" placeholder="e.g. 97" required></label>
+        <button type="submit">Analyse reading</button>
+      </form>
+      <form action="{{ url_for('reset_demo') }}" method="POST" class="reset-form"><button class="secondary" type="submit">Reset demo data</button></form>
+    </article>
+  </section>
+
+  <section class="panel chart-panel">
+    <div class="panel-heading"><div><p class="eyebrow">LAST 24 READINGS</p><h3>Water system trends</h3></div><span class="legend-note">Sample / entered data</span></div>
+    <canvas id="trendChart" height="100"></canvas>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">REVIEW REQUIRED</p><h3>Recent suspected anomalies</h3></div><span class="badge neutral">{{ medium_count }} medium · {{ high_count }} high</span></div>
+    {% if alerts %}
+    <div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Flow</th><th>Pressure</th><th>Tank</th><th>Risk</th><th>Possible reason</th><th>Estimated excess</th></tr></thead><tbody>
+      {% for item in alerts %}
+      <tr><td>{{ item['timestamp'] }}</td><td>{{ item['flow_rate_lpm'] }} L/min</td><td>{{ item['pressure_bar'] }} bar</td><td>{{ item['tank_level_percent'] }}%</td><td><span class="badge {{ item['risk']|lower }}">{{ item['risk'] }}</span></td><td>{{ item['reason'] }}</td><td>{{ item['estimated_loss_litres'] }} L</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% else %}<p class="empty">No suspected anomalies in the current data.</p>{% endif %}
+  </section>
+
+  <section class="disclaimer"><strong>Important:</strong> This is a hackathon software prototype using sample/simulated readings. An anomaly is only a possible warning, not proof of a leak. Thresholds and model performance must be validated using calibrated sensors and real labelled data before real-world use. Excess-water estimates are illustrative and depend on the assumed baseline and duration.</section>
+</main>
+<footer>AI-Powered Water Intelligence and Leak Prediction System · Hackathon prototype</footer>
+<script>
+const chartData = {{ chart_data|tojson }};
+const labels = chartData.labels.map(x => x.slice(5,16));
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: { labels, datasets: [
+    {label:'Flow (L/min)', data:chartData.flow, borderWidth:2, tension:.3, yAxisID:'y'},
+    {label:'Pressure (bar)', data:chartData.pressure, borderWidth:2, tension:.3, yAxisID:'y1'},
+    {label:'Tank level (%)', data:chartData.tank, borderWidth:2, tension:.3, yAxisID:'y2'}
+  ]},
+  options: { responsive:true, interaction:{mode:'index',intersect:false},
+    scales:{
+      y:{type:'linear',position:'left',title:{display:true,text:'Flow (L/min)'}},
+      y1:{type:'linear',position:'right',grid:{drawOnChartArea:false},title:{display:true,text:'Pressure (bar)'}},
+      y2:{type:'linear',display:false,min:0,max:100}
+    }
+  }
+});
+</script>
+</body>
+</html>
