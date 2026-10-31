@@ -1,5 +1,8 @@
-venv/
 __pycache__/
 *.pyc
-models/*.joblib
+*.pyo
 .env
+venv/
+*.pkl
+.DS_Store
+firmware/config.h
